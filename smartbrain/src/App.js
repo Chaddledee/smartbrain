@@ -8,7 +8,6 @@ import FaceRecog from './Components/FaceRecog/FaceRecog';
 import Signin from './Components/Signin/Signin';
 import Register from './Components/Register/Register';
 import Particles from 'react-particles-js';
-import Clarifai from 'clarifai';
 
 const particleOptions = {
   "particles": {
@@ -25,9 +24,20 @@ const particleOptions = {
   }
 }
 
-const clarApp = new Clarifai.App({
-  apiKey: '1461e82e9e6d49fba3ad268ccfe425ab'
-})
+const initialState = {
+  input:'',
+  imageUrl: '',
+  boxes: [],
+  route: 'signin',
+  isSignedIn: false,
+  user: {
+    id: '',
+    name: '',
+    email: '',
+    entries: 0,
+    joined: ''
+  }
+}
 
 class App extends React.Component {
   constructor() {
@@ -35,7 +45,7 @@ class App extends React.Component {
     this.state={
       input:'',
       imageUrl: '',
-      box: {},
+      boxes: [],
       route: 'signin',
       isSignedIn: false,
       user: {
@@ -54,27 +64,35 @@ class App extends React.Component {
           name: data.name,
           email: data.email,
           entries: data.entries,
-          joined: data.joined
+          joined: data.joined,
+
         }})
   }
 
   calcFaceLoc = (data) => {
     console.log(data);
-    const clarFace = data.outputs[0].data.regions[0].region_info.bounding_box;
     const image = document.getElementById('inputimage');
     const width = Number(image.width);
     const height = Number(image.height);
-    return {
-      leftCol: clarFace.left_col * width,
-      topRow: clarFace.top_row * height,
-      rightCol: width - (clarFace.right_col * width),
-      bottomRow: height - (clarFace.bottom_row * height)
-    }
+    let boxes = [];
+    data.outputs[0].data.regions.forEach(region => {
+      let clarFace = region.region_info.bounding_box;
+      boxes.push({
+        leftCol: clarFace.left_col * width,
+        topRow: clarFace.top_row * height,
+        rightCol: width - (clarFace.right_col * width),
+        bottomRow: height - (clarFace.bottom_row * height)
+      });
+    })
+    return boxes;
   }
 
-  displayFaceBox = (box) => {
-    console.log(box);
-    this.setState({box: box});
+  displayFaceBox = (boxes) => {
+    console.log(boxes);
+    this.setState({
+      boxes: boxes
+    })
+    console.log(this.state.boxes);
   }
 
   onInputChange = (event) => {
@@ -82,12 +100,15 @@ class App extends React.Component {
   }
 
   onButtonSubmit = () => {
-    console.log('click');
     this.setState({imageUrl: this.state.input}, () => {
-    console.log('click2');
-      clarApp.models.predict(
-        "a403429f2ddf4b49b307e318f00e528b", 
-        this.state.imageUrl)
+      fetch('http://localhost:3000/image', {
+        method: 'post',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          input: this.state.imageUrl
+        })
+      })
+      .then(res => res.json())
       .then(response => {
         if (response) {
           fetch('http://localhost:3000/image', {
@@ -101,6 +122,7 @@ class App extends React.Component {
           .then(count => {
             this.setState(Object.assign(this.state.user, {entries: count}))
           })
+          .catch(console.log)
         }
         this.displayFaceBox(this.calcFaceLoc(response))
       })
@@ -110,7 +132,7 @@ class App extends React.Component {
 
   onRouteChange = (route) => {
     if (route === 'signout') {
-      this.setState({isSignedIn: false});
+      this.setState(initialState);
     } else if (route === 'home') {
       this.setState({isSignedIn: true});
     }
@@ -131,7 +153,7 @@ class App extends React.Component {
               <ImageLinkForm 
                 onInputChange={this.onInputChange} 
                 onButtonSubmit={this.onButtonSubmit}/>
-              <FaceRecog box={this.state.box} imageUrl={this.state.imageUrl}/>
+              <FaceRecog boxes={this.state.boxes} imageUrl={this.state.imageUrl}/>
             </div>
         : (
             ( this.state.route === 'signin' || this.state.route === 'signout' )
